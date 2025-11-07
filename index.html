@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MP AYUSH BAMS Predictor (Embed)</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;color:#111;margin:0;padding:16px;}
+  .container{max-width:980px;margin:0 auto;}
+  .card{background:#fff;padding:14px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
+  input, select, textarea{width:100%;padding:8px;margin-top:6px;border:1px solid #ddd;border-radius:6px;}
+  .grid{display:flex;gap:10px}
+  .grid .col{flex:1}
+  button{background:#0b5fff;color:#fff;padding:10px 12px;border:0;border-radius:6px;cursor:pointer}
+  .funnel-row{display:flex;align-items:center;margin:8px 0}
+  .funnel-name{width:32%;font-size:14px}
+  .funnel-bar{flex:1;background:#e6eefc;border-radius:6px;overflow:hidden;height:30px;display:flex;align-items:center}
+  .funnel-fill{height:100%;background:#0b5fff;color:#fff;padding:4px 8px;font-size:13px;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
+  .small{font-size:12px;color:#555}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>MP AYUSH BAMS Predictor — Embed Version</h2>
+  <div class="card">
+    <div class="small">Enter your details and top 10 preferences (type names exactly as in seat matrix below). You can later paste the full colleges JSON into the script for real data.</div>
+
+    <div style="margin-top:10px">
+      <div class="grid">
+        <div class="col">
+          <label>NEET Marks</label>
+          <input id="marks" type="number" value="420" />
+        </div>
+        <div class="col">
+          <label>All India Rank (optional)</label>
+          <input id="air" type="text" placeholder="e.g. 185642" />
+        </div>
+        <div class="col">
+          <label>Category</label>
+          <select id="category">
+            <option>UR</option><option>OBC</option><option>SC</option><option>ST</option><option>EWS</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:10px" class="grid">
+        <div class="col">
+          <label>Domicile (MP / Other)</label>
+          <input id="domicile" value="MP" />
+        </div>
+        <div class="col">
+          <label>Round preference to predict up to</label>
+          <select id="maxRound"><option value="r1">Round 1</option><option value="r2" selected>Round 2</option><option value="r3">Round 3</option></select>
+        </div>
+        <div class="col">
+          <label></label>
+          <div style="padding-top:8px"><button id="predictBtn">Predict</button></div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <label>10 College Preferences (type as in seat matrix)</label>
+        <div id="prefsContainer">
+          <!-- 10 inputs -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="resultsArea"></div>
+
+  <div class="card" id="seatMatrixCard">
+    <h3 style="margin:0 0 8px 0">Seat Matrix (sample) — replace with full data for production</h3>
+    <div id="seatTableWrap" style="max-height:320px;overflow:auto"></div>
+  </div>
+
+</div>
+
+<script>
+/* -----------------------
+  IMPORTANT:
+  Replace the demo COLLEGES array below with the full JSON you have.
+  1) Open your colleges_final_refined.json
+  2) Copy entire array content and paste here replacing the demo array.
+  3) Save index.html and host it (GitHub Pages).
+----------------------- */
+
+/* DEMO: short sample (production: paste full JSON here) */
+const COLLEGES = [
+  {
+    "id":"pt-khushilal-bpl",
+    "name":"Pt. Khushilal Sharma Govt. Ayurved College, Bhopal",
+    "type":"Govt",
+    "totalSeats":125,
+    "domicileAffinity":["MP"],
+    "cutoffs":{
+      "r1":{"opening":494,"closing":487},
+      "r2":{"opening":480,"closing":466},
+      "r3":{"opening":477,"closing":462}
+    }
+  },
+  {
+    "id":"mansarovar-sehore",
+    "name":"Mansarovar Ayurved Medical College, Sehore",
+    "type":"Private",
+    "totalSeats":120,
+    "domicileAffinity":["MP"],
+    "cutoffs":{
+      "r1":{"opening":231,"closing":193},
+      "r2":{"opening":220,"closing":180},
+      "r3":{"opening":210,"closing":170}
+    }
+  },
+  {
+    "id":"ln-bhopal",
+    "name":"L.N. Ayurved College, Bhopal",
+    "type":"Private",
+    "totalSeats":150,
+    "domicileAffinity":["MP"],
+    "cutoffs":{
+      "r1":{"opening":403,"closing":362},
+      "r2":{"opening":390,"closing":350},
+      "r3":{"opening":380,"closing":330}
+    }
+  }
+];
+
+/* ---------- utility & app logic ---------- */
+function el(q){return document.querySelector(q)}
+function createEl(tag, attrs={}, txt=''){const e=document.createElement(tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(txt) e.textContent=txt; return e;}
+
+function initPrefs(){
+  const wrap = el('#prefsContainer'); wrap.innerHTML='';
+  for(let i=0;i<10;i++){
+    const inp = createEl('input',{type:'text','data-i':i,placeholder:`Preference ${i+1}`});
+    inp.style.marginTop='6px';
+    inp.className='prefInput';
+    wrap.appendChild(inp);
+  }
+}
+initPrefs();
+
+/* render seat matrix (simple table) */
+function renderSeatMatrix(){
+  const wrap = el('#seatTableWrap'); wrap.innerHTML='';
+  const table = createEl('table');
+  const thead = createEl('thead'); thead.innerHTML='<tr><th>Name</th><th>Type</th><th>Seats</th><th>R1 Close</th><th>R3 Close</th></tr>';
+  table.appendChild(thead);
+  const tbody = createEl('tbody');
+  COLLEGES.forEach(c=>{
+    const tr = createEl('tr');
+    const r1close = (c.cutoffs && c.cutoffs.r1 && c.cutoffs.r1.closing) ? c.cutoffs.r1.closing : '';
+    const r3close = (c.cutoffs && c.cutoffs.r3 && c.cutoffs.r3.closing) ? c.cutoffs.r3.closing : '';
+    tr.innerHTML = `<td style="min-width:280px">${c.name}</td><td>${c.type}</td><td>${c.totalSeats||''}</td><td>${r1close}</td><td>${r3close}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+renderSeatMatrix();
+
+/* compute functions */
+function sigmoid(x){return 1/(1+Math.exp(-x));}
+function computeChanceScore(marks, college, roundKey, prefIndex, domicile){
+  const close = (college.cutoffs && college.cutoffs[roundKey] && college.cutoffs[roundKey].closing) ? Number(college.cutoffs[roundKey].closing) : null;
+  const diff = close === null ? (marks - 300) : (marks - close);
+  const base = sigmoid(diff/8); // base 0..1
+  const domBonus = (domicile && (college.domicileAffinity||[]).map(x=>x.toLowerCase()).includes(domicile.toLowerCase())) ? 0.12 : 0;
+  const seatFactor = (college.type && college.type.toLowerCase()==='private') ? 0.15 : 0.06;
+  const prefWeight = 1 - Math.min(0.55, prefIndex*0.05);
+  let chance = (base + domBonus + seatFactor) * prefWeight;
+  chance = Math.max(0, Math.min(1, chance));
+  return Math.round(chance*100);
+}
+function predictEarliestRound(marks, college){
+  const rounds=['r1','r2','r3'];
+  for(const r of rounds){
+    const c = college.cutoffs && college.cutoffs[r] && college.cutoffs[r].closing ? Number(college.cutoffs[r].closing) : null;
+    if(c === null) continue;
+    if(marks >= c) return r;
+  }
+  return 'r3';
+}
+
+/* run prediction */
+function runPredict(){
+  const marks = Number(el('#marks').value || 0);
+  const air = el('#air').value || '';
+  const category = el('#category').value || 'UR';
+  const domicile = el('#domicile').value || '';
+  const maxRound = el('#maxRound').value || 'r2';
+  // read prefs
+  const prefsEls = document.querySelectorAll('.prefInput');
+  const prefs = Array.from(prefsEls).map(i=>i.value.trim()).filter(Boolean);
+  // map prefs to colleges
+  const nameMap = {};
+  COLLEGES.forEach(c=> nameMap[c.name.trim().toLowerCase()] = c);
+  const results = [];
+  prefs.forEach((p, idx)=>{
+    const key=p.toLowerCase();
+    const c = nameMap[key];
+    if(!c){
+      results.push({name:p, matched:false, chance:8, round:'unknown', note:'Not found'});
+      return;
+    }
+    // pick earliest round (but do not predict earlier than user's maxRound)
+    const earliest = predictEarliestRound(marks, c);
+    const chosenRound = (earliest==='r1' && (maxRound==='r1' || maxRound==='r2' || maxRound==='r3')) ? 'r1'
+      : (earliest==='r2' && (maxRound==='r2' || maxRound==='r3') ? 'r2' : 'r3');
+    const chance = computeChanceScore(marks, c, chosenRound, idx, domicile);
+    results.push({name:c.name, id:c.id, type:c.type, seats:c.totalSeats, chance, round:chosenRound});
+  });
+  // sort by chance desc (but keep original preference order visible)
+  results.sort((a,b)=> (b.chance||0) - (a.chance||0));
+  renderResults(results, {marks, air, category, domicile});
+}
+
+/* render results area */
+function renderResults(results, meta){
+  const area = el('#resultsArea'); area.innerHTML='';
+  const card = createEl('div'); card.className='card';
+  const hdr = createEl('div'); hdr.innerHTML = `<strong>Results</strong><div class="small">Marks: ${meta.marks} • AIR: ${meta.air||'—'} • Category: ${meta.category} • Domicile: ${meta.domicile}</div>`;
+  card.appendChild(hdr);
+  // funnel
+  const funnelWrap = createEl('div'); funnelWrap.style.marginTop='10px';
+  results.slice(0,10).forEach((r,i)=>{
+    const row = createEl('div'); row.className='funnel-row';
+    const nameBox = createEl('div'); nameBox.className='funnel-name'; nameBox.textContent = `${i+1}. ${r.name}`;
+    const barWrap = createEl('div'); barWrap.className='funnel-bar';
+    const max = Math.max(...results.map(x=>x.chance||0),1);
+    const widthPct = Math.max(6, Math.round((r.chance/max)*100));
+    const fill = createEl('div'); fill.className='funnel-fill'; fill.style.width = widthPct+'%';
+    fill.textContent = `${r.chance}% • ${r.round}`;
+    barWrap.appendChild(fill);
+    const percent = createEl('div'); percent.style.width='70px'; percent.style.textAlign='right'; percent.textContent = r.chance + '%';
+    row.appendChild(nameBox); row.appendChild(barWrap); row.appendChild(percent);
+    funnelWrap.appendChild(row);
+  });
+  card.appendChild(funnelWrap);
+
+  // details table
+  const tbl = createEl('table'); tbl.innerHTML = '<thead><tr><th>College</th><th>Type</th><th>Round</th><th>Chance</th><th>Seats</th></tr></thead>';
+  const tb = createEl('tbody');
+  results.forEach(r=>{
+    const tr = createEl('tr'); tr.innerHTML = `<td>${r.name}</td><td>${r.type||''}</td><td>${r.round}</td><td>${r.chance}%</td><td>${r.seats||''}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+
+  // save / download
+  const actions = createEl('div'); actions.style.marginTop='10px';
+  const btnSave = createEl('button'); btnSave.textContent='Download Report (JSON)';
+  btnSave.onclick = ()=> {
+    const data = {meta, results, timestamp:new Date().toISOString()};
+    const a = document.createElement('a');
+    a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data,null,2));
+    a.download = 'ayush_prediction_'+(meta.marks||'')+'.json';
+    a.click();
+  };
+  actions.appendChild(btnSave);
+  card.appendChild(actions);
+
+  area.appendChild(card);
+}
+
+/* event hookup */
+el('#predictBtn').addEventListener('click', runPredict);
+
+/* helpful: prefill prefs selector sample so users can see how to type names */
+(function prefillSamplePrefs(){
+  const inputs = document.querySelectorAll('.prefInput');
+  const sample = COLLEGES.slice(0,10).map(c=>c.name);
+  inputs.forEach((inp,i)=> inp.value = sample[i] || '');
+})();
+</script>
+</body>
+</html>
